@@ -1,5 +1,5 @@
 #goal
-int32 wall_to_follow
+int32 direction
 ---
 #result
 int32 reason
