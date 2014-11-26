@@ -3,17 +3,21 @@
 
 #include <s8_common_node/Node.h>
 #include <s8_utils/math.h>
-#include <s8_wall_follower_controller/wall_follower_controller_node.h>
+#include <s8_go_straight_controller/go_straight_controller_node.h>
 #include <s8_pid/PIDController.h>
 #include <actionlib/client/simple_action_client.h>
 #include <actionlib/server/simple_action_server.h>
 
 #include <geometry_msgs/Twist.h>
+#include <geometry_msgs/Pose2D.h>
+#include <s8_pose/pose_node.h>
 #include <s8_msgs/IRDistances.h>
 #include <s8_motor_controller/StopAction.h>
-#include <s8_wall_follower_controller/FollowWallAction.h>
+#include <s8_go_straight_controller/GoStraightAction.h>
 
 #define HZ                              25
+
+#define TOPIC_POSE                  s8::pose_node::TOPIC_POSE_SIMPLE
 
 #define PARAM_FOLLOWING_KP_NAME         "following_kp"
 #define PARAM_FOLLOWING_KP_DEFAULT      10.0
@@ -45,16 +49,17 @@
 #define PARAM_ALIGNMENT_SPEED_DEFAULT   0.5
 
 using namespace s8;
-using namespace s8::wall_follower_controller_node;
+using namespace s8::go_straight_controller_node;
 using namespace s8::pid;
 using namespace s8::utils::math;
 
 #define IR_INVALID_VALUE ir_sensors_node::TRESHOLD_VALUE
 
-class WallFollower : public Node {
+class GoStraight : public Node {
     ros::Subscriber ir_distances_subscriber;
+    ros::Subscriber pose_subscriber;
     ros::Publisher twist_publisher;
-    actionlib::SimpleActionServer<s8_wall_follower_controller::FollowWallAction> follow_wall_action;
+    actionlib::SimpleActionServer<s8_go_straight_controller::GoStraightAction> go_straight_action;
     actionlib::SimpleActionClient<s8_motor_controller::StopAction> stop_action;
 
     double distance;
@@ -76,22 +81,26 @@ class WallFollower : public Node {
     bool following;
     bool preempted;
 
+    int robot_rotation;
+
     bool aligning;
     int alignment_streak;
     int alignment_angle;
     double alignment_speed;
 
 public:
-    WallFollower(int hz) : distance_pid (hz), follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), follow_wall_action(nh, ACTION_FOLLOW_WALL, boost::bind(&WallFollower::action_execute_follow_wall_callback, this, _1), false) {
+    GoStraight(int hz) : distance_pid (hz), follow_pid(hz), align_pid(hz), v(0.0), w(0.0), alignment_streak(0), alignment_angle(0), aligning(false), following(false), preempted(false), left_front(IR_INVALID_VALUE), left_back(IR_INVALID_VALUE), right_front(IR_INVALID_VALUE), right_back(IR_INVALID_VALUE), stop_action(ACTION_STOP, true), go_straight_action(nh, ACTION_FOLLOW_WALL, boost::bind(&GoStraight::action_execute_go_straight_callback, this, _1), false) {
         init_params();
         print_params();
 
-        ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1, &WallFollower::ir_distances_callback, this);
+        ir_distances_subscriber = nh.subscribe<s8_msgs::IRDistances>(TOPIC_IR_DISTANCES, 1, &GoStraight::ir_distances_callback, this);
+                pose_subscriber = nh.subscribe<geometry_msgs::Pose2D>(TOPIC_POSE, 1, &GoStraight::pose_callback, this);
+
         twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1);
         
-        follow_wall_action.registerPreemptCallback(boost::bind(&WallFollower::follow_wall_cancel_callback, this));
+        go_straight_action.registerPreemptCallback(boost::bind(&GoStraight::go_straight_cancel_callback, this));
 
-        follow_wall_action.start();
+        go_straight_action.start();
 
         ROS_INFO("Waiting for stop action server...");
         stop_action.waitForServer();
@@ -174,10 +183,10 @@ private:
         return std::abs(std::abs(back) - std::abs(front)) <= 0.02;
     }
 
-    void follow_wall_cancel_callback() {
+    void go_straight_cancel_callback() {
         stop_following();
 
-        ROS_INFO("Cancelling wall following action...");
+        ROS_INFO("Cancelling go straight action...");
     }
 
     void stop_following() {
@@ -188,7 +197,7 @@ private:
         w = 0.0;
     }
 
-    void action_execute_follow_wall_callback(const s8_wall_follower_controller::FollowWallGoalConstPtr & goal) {
+    void action_execute_go_straight_callback(const s8_go_straight_controller::FollowWallGoalConstPtr & goal) {
         preempted = false;
         following = true;
         aligning = true;
@@ -222,20 +231,20 @@ private:
         if(ticks >= timeout * rate_hz) {
             ROS_WARN("Wall following action timed out.");
             stop_following();
-            s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-            follow_wall_action_result.reason = FollowWallFinishedReason::TIMEOUT;
-            follow_wall_action.setAborted(follow_wall_action_result);
+            s8_go_straight_controller::GoStraightResult go_straight_action_result;
+            go_straight_action_result.reason = GoStraightFinishedReason::TIMEOUT;
+            go_straight_action.setAborted(go_straight_action_result);
         } else if(preempted) {
             ROS_INFO("PREEMPTED: Cancelled wall following");
-            s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-            follow_wall_action_result.reason = FollowWallFinishedReason::PREEMPTED;
-            follow_wall_action.setPreempted(follow_wall_action_result);        
+            s8_go_straight_controller::GoStraightResult go_straight_action_result;
+            go_straight_action_result.reason = GoStraightFinishedReason::PREEMPTED;
+            go_straight_action.setPreempted(go_straight_action_result);        
         } else if(!preempted) {
             ROS_INFO("SUCCEEDED: Wall following succeeded");
             stop_following();
-            s8_wall_follower_controller::FollowWallResult follow_wall_action_result;
-            follow_wall_action_result.reason = FollowWallFinishedReason::OUT_OF_RANGE;
-            follow_wall_action.setSucceeded(follow_wall_action_result);
+            s8_go_straight_controller::GoStraightResult go_straight_action_result;
+            go_straight_action_result.reason = GoStraightFinishedReason::OUT_OF_RANGE;
+            go_straight_action.setSucceeded(go_straight_action_result);
         }
     }
 
@@ -334,7 +343,7 @@ private:
 int main(int argc, char **argv) {
     ros::init(argc, argv, NODE_NAME);
 
-    WallFollower wall_follower(HZ);
+    GoStraight wall_follower(HZ);
 
     ros::Rate loop_rate(HZ);
 
