@@ -1,4 +1,4 @@
-s8_wall_follower_controller
+s8_go_straight_controller
 ===========================
 
-See name.
+Tries to go straight using the pose. This to reduce drifting to the left/right when not following walls.
