@@ -18,6 +18,9 @@
 
 #define TOPIC_POSE                  s8::pose_node::TOPIC_POSE_SIMPLE
 
+#define PARAM_LINEAR_SPEED_NAME         "linear_speed"
+#define PARAM_LINEAR_SPEED_DEFAULT      0.2
+
 using s8::pose_node::FrontFacing;
 
 using namespace s8;
@@ -66,7 +69,9 @@ public:
         }
         //Do controller stuff:
         align_pid.reset();
-
+        //TODO: do this better/smoother
+        w += (goal_roation - robot_rotation) * 0.1; 
+        v = linear_speed;
         publish();
     }
 
@@ -140,7 +145,7 @@ private:
     }
 
     void init_params() {
-        
+        add_param(PARAM_LINEAR_SPEED_NAME, linear_speed, PARAM_LINEAR_SPEED_DEFAULT);
     }
 };
 
