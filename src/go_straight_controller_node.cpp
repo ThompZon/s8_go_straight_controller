@@ -65,6 +65,7 @@ public:
             return;
         }
         //Do controller stuff:
+        align_pid.reset();
 
         publish();
     }
@@ -92,6 +93,7 @@ private:
     }
 
     void stop_going_straight() {
+        //TODO need to fix anything else?
         aligning = false;
         going = false;
         v = 0.0;
@@ -121,7 +123,7 @@ private:
     }
 
     void action_execute_go_straight_callback(const s8_go_straight_controller::FollowWallGoalConstPtr & goal) {
-        
+        //TODO ???
     }
 
     void publish() {
