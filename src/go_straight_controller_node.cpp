@@ -18,10 +18,13 @@
 
 #define TOPIC_POSE                  s8::pose_node::TOPIC_POSE_SIMPLE
 
+using s8::pose_node::FrontFacing;
+
 using namespace s8;
 using namespace s8::go_straight_controller_node;
 using namespace s8::pid;
 using namespace s8::utils::math;
+
 
 class GoStraight : public Node {
     ros::Subscriber pose_subscriber;
@@ -35,12 +38,17 @@ class GoStraight : public Node {
     int robot_rotation;
     int goal_roation;
 
+    const int EAST = 0;
+    const int NORTH = 90;
+    const int WEST = 180;
+    const int SOUTH = 270;
+
     bool going;
     double linear_speed;
     double v, w;
 
 public:
-    GoStraight(int hz) : align_pid(hz), v(0.0), w(0.0), aligning(false), going(false), stop_action(ACTION_STOP, true), go_straight_action(nh, ACTION_GO_STRAIGHT, boost::bind(&GoStraight::action_execute_go_straight_callback, this, _1), false) {
+    GoStraight(int hz) : align_pid(hz), v(0.0), w(0.0), aligning(false), going(false), recieved_goal(false), stop_action(ACTION_STOP, true), go_straight_action(nh, ACTION_GO_STRAIGHT, boost::bind(&GoStraight::action_execute_go_straight_callback, this, _1), false) {
         pose_subscriber = nh.subscribe<geometry_msgs::Pose2D>(TOPIC_POSE, 1, &GoStraight::pose_callback, this);
         twist_publisher = nh.advertise<geometry_msgs::Twist>(TOPIC_TWIST, 1);
         
@@ -53,7 +61,7 @@ public:
     }
 
     void update() {
-        if(!going) {
+        if(!going || !recieved_goal) {
             return;
         }
         //Do controller stuff:
@@ -88,6 +96,28 @@ private:
         going = false;
         v = 0.0;
         w = 0.0;
+    }
+
+    void pose_callback(const geometry_msgs::Pose2D::ConstPtr & pose) {
+        robot_rotation = radians_to_degrees(pose->theta);
+        //Set goal rotation based on current rotation, do this once!
+        if(recieved_goal == false){
+            recieved_goal = true;
+            if(robot_rotation <= 45 || robot_rotation >= 315){
+                goal_roation = EAST;
+                ROS_INFO("Going Straight towards EAST");
+            }else if(robot_rotation <= 135){ //&& robot_rotation >= 45){ // NOT NEEDED, will be coverd by the above if statements
+                goal_roation = NORTH;
+                ROS_INFO("Going Straight towards NORTH");
+            }else if(robot_rotation <= 225){ //&& robot_rotation >= 135){
+                goal_roation = WEST;
+                ROS_INFO("Going Straight towards WEST");
+            }else if(robot_rotation <= 315){
+                goal_roation = SOUTH;
+                ROS_INFO("Going Straight towards SOUTH");
+            }
+        }
+        ROS_INFO("%lf %d", pose->theta, radians_to_degrees(pose->theta));
     }
 
     void action_execute_go_straight_callback(const s8_go_straight_controller::FollowWallGoalConstPtr & goal) {
