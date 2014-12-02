@@ -16,7 +16,7 @@
 
 #define HZ                              25
 
-#define TOPIC_POSE                  s8::pose_node::TOPIC_POSE_SIMPLE
+#define TOPIC_POSE                      s8::pose_node::TOPIC_POSE_SIMPLE
 
 #define PARAM_LINEAR_SPEED_NAME         "linear_speed"
 #define PARAM_LINEAR_SPEED_DEFAULT      0.2
@@ -41,9 +41,9 @@ class GoStraight : public Node {
     int robot_rotation;
     int goal_roation;
 
-    const int EAST = 0;
+    const int EAST  = 0;
     const int NORTH = 90;
-    const int WEST = 180;
+    const int WEST  = 180;
     const int SOUTH = 270;
 
     bool going;
